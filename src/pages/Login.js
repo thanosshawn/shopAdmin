@@ -1,23 +1,29 @@
-
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth"; 
 import { auth, db } from "../firebase"; 
 import { useNavigate } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore"; 
 import { toast } from "react-toastify"; 
+import ReCAPTCHA from "react-google-recaptcha";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [captchaVerified, setCaptchaVerified] = useState(false);
+  const recaptchaRef = useRef(); 
   const navigate = useNavigate();
 
   const handleLogin = async () => {
+    if (!captchaVerified) {
+      toast.error("Please verify the CAPTCHA.");
+      return;
+    }
+
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      
       const userDocRef = doc(db, "users", user.uid);
       const userDoc = await getDoc(userDocRef);
       if (userDoc.exists()) {
@@ -37,7 +43,14 @@ const Login = () => {
     } catch (error) {
       setErrorMessage("Invalid email or password.");
       toast.error("Invalid email or password.");
+      
+      setCaptchaVerified(false);
+      recaptchaRef.current.reset(); 
     }
+  };
+
+  const handleCaptchaVerification = (value) => {
+    setCaptchaVerified(!!value);
   };
 
   return (
@@ -59,9 +72,16 @@ const Login = () => {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
+        <ReCAPTCHA
+          sitekey="6Lf63EoqAAAAAJLVIpWdZmg-pri-kVm-Lw2a2m5E" 
+          onChange={handleCaptchaVerification}
+          ref={recaptchaRef} 
+          className="mb-4"
+        />
         <button
           className="bg-blue-500 text-white p-2 w-full rounded hover:bg-blue-600"
           onClick={handleLogin}
+          disabled={!captchaVerified}
         >
           Login
         </button>
