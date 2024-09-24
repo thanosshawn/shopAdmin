@@ -25,12 +25,12 @@ const ProductManager = () => {
     }
   };
 
-  // Function to format price in Indian style
+  
   const formatPrice = (price) => {
     return `₹${Number(price).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
   };
 
-  // Filter products based on the search term
+  
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase())
   );

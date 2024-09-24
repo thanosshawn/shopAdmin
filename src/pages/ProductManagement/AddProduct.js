@@ -46,7 +46,7 @@ const AddProduct = () => {
     image: "",
     image2: "",
     image3: "",
-    showOnHome: false, // Added showOnHome boolean
+    showOnHome: false, 
   });
   const navigate = useNavigate();
 

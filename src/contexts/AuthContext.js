@@ -1,8 +1,8 @@
-// src/contexts/AuthContext.js
+
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useAuthState } from "react-firebase-hooks/auth";
-import { auth, db } from "../firebase"; // Ensure db is imported
-import { doc, getDoc } from "firebase/firestore"; // Import Firestore methods
+import { auth, db } from "../firebase"; 
+import { doc, getDoc } from "firebase/firestore"; 
 
 const AuthContext = createContext();
 
@@ -20,7 +20,7 @@ export const AuthProvider = ({ children }) => {
           const userDoc = await getDoc(userDocRef);
           if (userDoc.exists()) {
             const userData = userDoc.data();
-            setRole(userData.userRole); // Assuming 'userRole' field exists
+            setRole(userData.userRole); 
           } else {
             setRole(null);
           }
@@ -46,7 +46,7 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-// Custom hook for accessing auth context
+
 export const useAuth = () => {
   return useContext(AuthContext);
 };

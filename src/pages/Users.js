@@ -4,7 +4,7 @@ import { db } from "../firebase";
 
 const Users = () => {
   const [users, setUsers] = useState([]);
-  const [visibleUsers, setVisibleUsers] = useState(5); // Number of users to show initially
+  const [visibleUsers, setVisibleUsers] = useState(5); 
   const [allUsers, setAllUsers] = useState([]);
 
   useEffect(() => {
@@ -12,15 +12,15 @@ const Users = () => {
       const usersCol = collection(db, "users");
       const userSnapshot = await getDocs(usersCol);
       const userList = userSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setAllUsers(userList); // Store all users
-      setUsers(userList.slice(0, visibleUsers)); // Show initial users
+      setAllUsers(userList); 
+      setUsers(userList.slice(0, visibleUsers)); 
     };
     fetchUsers();
   }, [visibleUsers]);
 
   const loadMoreUsers = () => {
-    setVisibleUsers(prev => prev + 5); // Load 5 more users
-    setUsers(allUsers.slice(0, visibleUsers + 5)); // Update the displayed users
+    setVisibleUsers(prev => prev + 5); 
+    setUsers(allUsers.slice(0, visibleUsers + 5)); 
   };
 
   const toggleBanUser = async (userId, isBanned) => {
@@ -30,8 +30,8 @@ const Users = () => {
     if (confirmAction) {
       const userRef = doc(db, "users", userId);
       try {
-        await updateDoc(userRef, { isBanned: !isBanned }); // Toggle the banned status
-        // Update local state to reflect the change
+        await updateDoc(userRef, { isBanned: !isBanned }); 
+        
         setUsers(users.map(user => 
           user.id === userId ? { ...user, isBanned: !isBanned } : user
         ));
@@ -45,10 +45,8 @@ const Users = () => {
     }
   };
 
-  // Function to format price in Indian style (if applicable)
-  const formatPrice = (price) => {
-    return `₹${Number(price).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
-  };
+  
+
 
   return (
     <div className="p-4">

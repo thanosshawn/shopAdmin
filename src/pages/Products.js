@@ -1,4 +1,4 @@
-// src/pages/Products.js
+
 import { useEffect, useState } from "react";
 import {
   collection,
@@ -65,7 +65,7 @@ const Products = () => {
       id: doc.id,
       ...doc.data(),
     }));
-    console.log("Fetched products:", productList); // Debugging line
+    console.log("Fetched products:", productList); 
     setProducts(productList);
   };
 
@@ -86,22 +86,22 @@ const Products = () => {
       image2: "",
       image3: "",
     });
-    fetchProducts(); // Refresh product list
+    fetchProducts(); 
   };
 
   const handleUpdateProduct = async (id) => {
     const productRef = doc(db, "products", id);
     await updateDoc(productRef, editingProduct);
-    setEditingProduct(null); // Clear editing state
-    fetchProducts(); // Refresh product list
+    setEditingProduct(null); 
+    fetchProducts(); 
   };
 
   const handleDeleteProduct = async (id) => {
     await deleteDoc(doc(db, "products", id));
-    fetchProducts(); // Refresh product list
+    fetchProducts(); 
   };
 
-  // Filter products based on the search term
+  
   const filteredProducts = searchTerm
     ? products.filter((product) =>
         product.name.toLowerCase().includes(searchTerm.toLowerCase())

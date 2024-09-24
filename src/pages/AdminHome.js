@@ -3,17 +3,17 @@ import { useState } from "react";
 import { toast } from "react-toastify";
 
 const AdminHome = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(true); // Replace with actual auth state
+  const [setIsLoggedIn] = useState(true); 
   const location = useLocation();
 
   const handleLogout = () => {
-    // Implement your logout logic here
-    setIsLoggedIn(false); // Update auth state
+    
+    setIsLoggedIn(false); 
     toast.success("Logged out successfully!");
-    window.location.href = "/login"; // Redirect to login
+    window.location.href = "/login"; 
   };
 
-  // Determine if we are on the manage or edit/add routes
+  
   const isManageRoute = 
     location.pathname === '/users' || 
     location.pathname === '/products' ||

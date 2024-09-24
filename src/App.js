@@ -1,4 +1,4 @@
-// src/App.js
+
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Users from "./pages/Users";
@@ -7,9 +7,9 @@ import AddProduct from "./pages/ProductManagement/AddProduct";
 import EditProduct from "./pages/ProductManagement/EditProduct";
 import Login from "./pages/Login";
 import AdminHome from "./pages/AdminHome";
-import { ToastContainer } from "react-toastify"; // Import ToastContainer
-import 'react-toastify/dist/ReactToastify.css'; // Import CSS
-import { AuthProvider } from "./contexts/AuthContext"; // Import AuthProvider
+import { ToastContainer } from "react-toastify"; 
+import 'react-toastify/dist/ReactToastify.css'; 
+import { AuthProvider } from "./contexts/AuthContext"; 
 
 function App() {
   return (

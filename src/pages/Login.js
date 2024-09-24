@@ -1,10 +1,10 @@
-// src/pages/Login.js
-import { useState, useEffect } from "react";
-import { signInWithEmailAndPassword, signOut } from "firebase/auth"; // Import signOut
-import { auth, db } from "../firebase"; // Ensure db is imported
+
+import { useState } from "react";
+import { signInWithEmailAndPassword, signOut } from "firebase/auth"; 
+import { auth, db } from "../firebase"; 
 import { useNavigate } from "react-router-dom";
-import { doc, getDoc } from "firebase/firestore"; // Import Firestore methods
-import { toast } from "react-toastify"; // Import toast for notifications
+import { doc, getDoc } from "firebase/firestore"; 
+import { toast } from "react-toastify"; 
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -17,7 +17,7 @@ const Login = () => {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // Fetch user role from Firestore
+      
       const userDocRef = doc(db, "users", user.uid);
       const userDoc = await getDoc(userDocRef);
       if (userDoc.exists()) {
