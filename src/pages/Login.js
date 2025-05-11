@@ -73,7 +73,7 @@ const Login = () => {
           onChange={(e) => setPassword(e.target.value)}
         />
         <ReCAPTCHA
-          sitekey="6Lf63EoqAAAAAJLVIpWdZmg-pri-kVm-Lw2a2m5E" 
+          sitekey="6LddLgYrAAAAAHVincfRV9vd1Qy_cyez6HHBmMuv" 
           onChange={handleCaptchaVerification}
           ref={recaptchaRef} 
           className="mb-4"

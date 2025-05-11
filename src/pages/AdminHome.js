@@ -2,21 +2,32 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { toast } from "react-toastify";
 
+/**
+ * Admin Home/Dashboard Component
+ * 
+ * This component provides the layout for the admin panel including:
+ * - Sidebar navigation to all admin functions
+ * - Logout functionality
+ * - Main content area for displaying child routes
+ */
 const AdminHome = () => {
   const [setIsLoggedIn] = useState(true); 
   const location = useLocation();
 
+  /**
+   * Handle admin logout
+   */
   const handleLogout = () => {
-    
     setIsLoggedIn(false); 
     toast.success("Logged out successfully!");
     window.location.href = "/login"; 
   };
 
-  
+  // Check if we're on a management route to hide the welcome content
   const isManageRoute = 
     location.pathname === '/users' || 
     location.pathname === '/products' ||
+    location.pathname === '/orders' ||
     location.pathname.startsWith('/products/edit') ||
     location.pathname.startsWith('/products/add');
 
@@ -28,13 +39,33 @@ const AdminHome = () => {
           <h2 className="text-lg font-bold mb-4">Admin Panel</h2>
           <ul className="space-y-2">
             <li>
-              <Link to="/users" className="block px-4 py-2 rounded hover:bg-gray-700">
-                Manage Users
+              <Link 
+                to="/orders" 
+                className={`block px-4 py-2 rounded hover:bg-gray-700 ${
+                  location.pathname === '/orders' ? 'bg-gray-700' : ''
+                }`}
+              >
+                Manage Orders
               </Link>
             </li>
             <li>
-              <Link to="/products" className="block px-4 py-2 rounded hover:bg-gray-700">
+              <Link 
+                to="/products" 
+                className={`block px-4 py-2 rounded hover:bg-gray-700 ${
+                  location.pathname.includes('/products') ? 'bg-gray-700' : ''
+                }`}
+              >
                 Manage Products
+              </Link>
+            </li>
+            <li>
+              <Link 
+                to="/users" 
+                className={`block px-4 py-2 rounded hover:bg-gray-700 ${
+                  location.pathname === '/users' ? 'bg-gray-700' : ''
+                }`}
+              >
+                Manage Users
               </Link>
             </li>
           </ul>
