@@ -3,7 +3,6 @@ import { collection, query, orderBy, getDocs, doc, updateDoc, getDoc } from 'fir
 import { db } from '../firebase';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { useNavigate } from 'react-router-dom';
 
 /**
  * Admin Orders Management Page
