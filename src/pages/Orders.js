@@ -24,7 +24,6 @@ function Orders() {
   const [trackingInfo, setTrackingInfo] = useState({ code: '', carrier: 'IndiaPost' });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [processingAction, setProcessingAction] = useState(false);
-  const navigate = useNavigate();
   
   // Define order status options and colors
   const ORDER_STATUS = {
