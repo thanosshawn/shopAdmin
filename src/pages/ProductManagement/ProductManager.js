@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { collection, getDocs, deleteDoc, doc, query, limit, orderBy, startAfter } from "firebase/firestore";
 import { db } from "../../firebase";
 import { Link } from "react-router-dom";
@@ -23,13 +23,13 @@ const ProductManager = () => {
    */
   useEffect(() => {
     fetchInitialProducts();
-  }, []);
+  }, [fetchInitialProducts]);
   
   /**
    * Fetch the initial set of products
    * Uses a Firestore query with ordering and pagination
    */
-  const fetchInitialProducts = async () => {
+  const fetchInitialProducts = useCallback(async () => {
     setIsLoading(true);
     try {
       // Create query with limit and ordering
@@ -58,7 +58,7 @@ const ProductManager = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [productsPerPage]);
   
   /**
    * Load more products - fetches the next set of products

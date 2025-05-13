@@ -1,9 +1,9 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
-import { collection, query, getDocs, orderBy, limit, where, Timestamp } from "firebase/firestore";
+import { collection, query, getDocs, orderBy, limit } from "firebase/firestore";
 import { db } from "../firebase";
-import { formatCurrency, formatLakhs, formatSmartIndian } from "../utils/formatUtils";
+import { formatCurrency, formatLakhs } from "../utils/formatUtils";
 
 // Import recharts components only after React has initialized
 const ChartComponents = () => {
