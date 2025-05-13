@@ -19,13 +19,6 @@ const ProductManager = () => {
   const [isDeleting, setIsDeleting] = useState(false); // Delete operation state
 
   /**
-   * Initial fetch of products when component mounts
-   */
-  useEffect(() => {
-    fetchInitialProducts();
-  }, [fetchInitialProducts]);
-  
-  /**
    * Fetch the initial set of products
    * Uses a Firestore query with ordering and pagination
    */
@@ -59,6 +52,13 @@ const ProductManager = () => {
       setIsLoading(false);
     }
   }, [productsPerPage]);
+
+  /**
+   * Initial fetch of products when component mounts
+   */
+  useEffect(() => {
+    fetchInitialProducts();
+  }, [fetchInitialProducts]);
   
   /**
    * Load more products - fetches the next set of products
