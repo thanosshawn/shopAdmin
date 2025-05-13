@@ -585,6 +585,8 @@ const AdminHome = () => {
     location.pathname === '/products' ||
     location.pathname === '/orders' ||
     location.pathname === '/coupons' ||
+    location.pathname === '/banners' ||
+    location.pathname === '/announcements' ||
     location.pathname.startsWith('/products/edit') ||
     location.pathname.startsWith('/products/add');
 
@@ -643,6 +645,26 @@ const AdminHome = () => {
                 }`}
               >
                 Manage Coupons
+              </Link>
+            </li>
+            <li>
+              <Link 
+                to="/banners" 
+                className={`block px-4 py-2 rounded hover:bg-gray-700 ${
+                  location.pathname === '/banners' ? 'bg-gray-700' : ''
+                }`}
+              >
+                Manage Banners
+              </Link>
+            </li>
+            <li>
+              <Link 
+                to="/announcements" 
+                className={`block px-4 py-2 rounded hover:bg-gray-700 ${
+                  location.pathname === '/announcements' ? 'bg-gray-700' : ''
+                }`}
+              >
+                Manage Announcements
               </Link>
             </li>
           </ul>
