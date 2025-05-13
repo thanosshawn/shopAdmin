@@ -402,14 +402,13 @@ const AnnouncementManager = () => {
               >
                 <span>{newAnnouncement.text}</span>
                 {newAnnouncement.link && newAnnouncement.linkText && (
-                  <a 
-                    href="#"
+                  <button 
                     onClick={(e) => e.preventDefault()}
-                    className="ml-2 font-medium underline"
+                    className="ml-2 font-medium underline border-none bg-transparent cursor-pointer"
                     style={{ color: newAnnouncement.textColor }}
                   >
                     {newAnnouncement.linkText}
-                  </a>
+                  </button>
                 )}
               </div>
             </div>
