@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
-import { getFirestore } from "firebase/firestore"; 
+import { getFirestore, initializeFirestore } from "firebase/firestore"; 
 
 const firebaseConfig = {
   apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
@@ -13,12 +13,17 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app); 
 
+// Initialize Firestore with experimentalForceLongPolling to fix WebChannel connection issues
+// This helps prevent 400 Bad Request errors when writing to Firestore
+const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+  useFetchStreams: false
+}); 
 
 setPersistence(auth, browserLocalPersistence)
   .then(() => {
-    
+    // Persistence successfully set
   })
   .catch((error) => {
     console.error("Error setting persistence:", error);
