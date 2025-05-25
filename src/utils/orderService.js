@@ -358,6 +358,11 @@ class AdminOrderService {
           updateData.refundReason = updateInfo.reason || 'Refund processed';
           updateData.refundMethod = updateInfo.refundMethod || 'original_payment_method';
           break;
+          
+        default:
+          // For any other status, just update the basic fields
+          console.log(`📝 AdminOrderService: Using default handling for status ${newStatus}`);
+          break;
       }
       
       // Use transaction to ensure data consistency across collections
