@@ -1046,6 +1046,5 @@ class AdminOrderService {
   }
 }
 
-// Export the service class and constants for use in admin components
-export default AdminOrderService;
-export { ORDER_STATUSES, ORDER_PRIORITIES, SHIPPING_CARRIERS }; 
+// Export the service class for use in admin components
+export default AdminOrderService; 

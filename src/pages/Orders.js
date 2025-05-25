@@ -217,33 +217,6 @@ function Orders() {
   }), []);
 
   /**
-   * Initial data loading effect
-   * Fetches orders on component mount and sets up data refresh
-   */
-  useEffect(() => {
-    console.log('🔄 Orders: Component mounted, initiating data fetch');
-    fetchOrders();
-    
-    // Set up auto-refresh for real-time updates (every 5 minutes)
-    const refreshInterval = setInterval(fetchOrders, 5 * 60 * 1000);
-    
-    // Cleanup interval on component unmount
-    return () => {
-      clearInterval(refreshInterval);
-      console.log('🧹 Orders: Component unmounted, cleaning up resources');
-    };
-  }, []);
-
-  /**
-   * Filter application effect
-   * Applies current filters to the orders list whenever filters or orders change
-   */
-  useEffect(() => {
-    console.log('🔍 Orders: Applying filters to orders list');
-    applyFilters();
-  }, [orders, filters]);
-
-  /**
    * Comprehensive order fetching function
    * Retrieves orders from the backend with error handling and loading states
    */
@@ -291,7 +264,7 @@ function Orders() {
     } finally {
       setLoading(false);
     }
-  }, [filters, pagination.itemsPerPage, pagination.currentPage]);
+  }, [filters, pagination.itemsPerPage, pagination.currentPage, loading]);
 
   /**
    * Advanced filter application function
@@ -381,6 +354,33 @@ function Orders() {
   }, [orders, filters]);
 
   /**
+   * Initial data loading effect
+   * Fetches orders on component mount and sets up data refresh
+   */
+  useEffect(() => {
+    console.log('🔄 Orders: Component mounted, initiating data fetch');
+    fetchOrders();
+    
+    // Set up auto-refresh for real-time updates (every 5 minutes)
+    const refreshInterval = setInterval(fetchOrders, 5 * 60 * 1000);
+    
+    // Cleanup interval on component unmount
+    return () => {
+      clearInterval(refreshInterval);
+      console.log('🧹 Orders: Component unmounted, cleaning up resources');
+    };
+  }, [fetchOrders]);
+
+  /**
+   * Filter application effect
+   * Applies current filters to the orders list whenever filters or orders change
+   */
+  useEffect(() => {
+    console.log('🔍 Orders: Applying filters to orders list');
+    applyFilters();
+  }, [orders, filters, applyFilters]);
+
+  /**
    * Comprehensive order status update function
    * Updates order status with validation, history tracking, and user feedback
    * 
@@ -397,9 +397,6 @@ function Orders() {
       // Validate status transition if current order is available
       const currentOrder = orders.find(order => order.id === orderId);
       if (currentOrder) {
-        const statusConfig = ORDER_STATUS_CONFIG[newStatus];
-        const currentConfig = ORDER_STATUS_CONFIG[currentOrder.status];
-        
         console.log(`📋 Orders: Status transition: ${currentOrder.status} → ${newStatus}`);
         
         // Show confirmation for critical status changes
@@ -1480,8 +1477,7 @@ function Orders() {
                           <span className={`px-2 py-1 rounded text-xs font-medium ${
                             PRIORITY_CONFIG[selectedOrder.priority || ORDER_PRIORITIES.NORMAL]?.color
                           }`}>
-                            {PRIORITY_CONFIG[selectedOrder.priority || ORDER_PRIORITIES.NORMAL]?.icon} {
-                            PRIORITY_CONFIG[selectedOrder.priority || ORDER_PRIORITIES.NORMAL]?.label}
+                            {PRIORITY_CONFIG[selectedOrder.priority || ORDER_PRIORITIES.NORMAL]?.icon} {PRIORITY_CONFIG[selectedOrder.priority || ORDER_PRIORITIES.NORMAL]?.label}
                           </span>
                         </div>
                         <div className="flex justify-between">
@@ -1654,18 +1650,26 @@ function Orders() {
                           </div>
                         )}
                         
-                        <div className="text-gray-600">Subtotal</div>
-                        <div className="text-gray-900">{formatCurrency(selectedOrder.subtotal)}</div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Subtotal:</span>
+                          <span className="text-gray-900">{formatCurrency(selectedOrder.subtotal)}</span>
+                        </div>
                         
-                        <div className="text-gray-600">Tax</div>
-                        <div className="text-gray-900">{formatCurrency(selectedOrder.tax)}</div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Tax:</span>
+                          <span className="text-gray-900">{formatCurrency(selectedOrder.tax)}</span>
+                        </div>
                         
-                        <div className="text-gray-600">Shipping</div>
-                        <div className="text-gray-900">{formatCurrency(selectedOrder.shipping?.cost || 0)}</div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Shipping:</span>
+                          <span className="text-gray-900">{formatCurrency(selectedOrder.shipping?.cost || 0)}</span>
+                        </div>
                         
-                        <div className="text-gray-600 font-medium">Total</div>
-                        <div className="text-gray-900 font-bold text-lg">
-                          {formatCurrency(selectedOrder.total)}
+                        <div className="flex justify-between">
+                          <span className="text-gray-600 font-medium">Total:</span>
+                          <span className="text-gray-900 font-bold text-lg">
+                            {formatCurrency(selectedOrder.total)}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1822,10 +1826,9 @@ function Orders() {
               )}
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Analytics Modal */}
       {showAnalytics && analyticsData && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
