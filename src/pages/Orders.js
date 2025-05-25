@@ -19,7 +19,9 @@
  * @version 2.0.0
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { collection, query, orderBy, getDocs, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -41,6 +43,13 @@ function Orders() {
   const [filteredOrders, setFilteredOrders] = useState([]);   // Filtered orders based on current filters
   const [loading, setLoading] = useState(true);               // Loading state for data fetching
   const [error, setError] = useState(null);                   // Error state for error handling
+  
+  // Ref to store the latest fetchOrders function for interval access
+  const fetchOrdersRef = useRef(null);
+  
+  // Ref to prevent rapid successive API calls
+  const lastFetchTimeRef = useRef(0);
+  const FETCH_DEBOUNCE_MS = 1000; // Minimum time between fetches
   
   // Filter and search state management
   const [filters, setFilters] = useState({
@@ -65,7 +74,7 @@ function Orders() {
   const [selectedOrderIds, setSelectedOrderIds] = useState(new Set()); // Selected orders for bulk operations
   const [bulkOperationMode, setBulkOperationMode] = useState(false);   // Bulk operation mode toggle
   
-  // Shipping management state
+  // Shipping management state (simplified like original code)
   const [shippingInfo, setShippingInfo] = useState({
     trackingNumber: '',               // Tracking number for shipment
     carrier: 'IndiaPost',            // Selected shipping carrier
@@ -79,12 +88,8 @@ function Orders() {
   const [analyticsData, setAnalyticsData] = useState(null);   // Analytics data cache
   const [analyticsLoading, setAnalyticsLoading] = useState(false); // Analytics loading state
   
-  // Pagination state for large datasets
-  const [pagination, setPagination] = useState({
-    currentPage: 1,                   // Current page number
-    itemsPerPage: 20,                 // Items per page limit
-    totalItems: 0                     // Total items count
-  });
+  // Note: Pagination state removed as it's not currently implemented in the UI
+  // Future enhancement: Add pagination for large datasets
 
   /**
    * Comprehensive order status configuration with enhanced styling and workflow
@@ -94,7 +99,6 @@ function Orders() {
     [ORDER_STATUSES.PLACED]: { 
       label: 'Placed', 
       color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      icon: '📝',
       description: 'Order placed by customer, awaiting admin approval',
       nextActions: ['approve', 'decline'],
       workflow: {
@@ -107,7 +111,6 @@ function Orders() {
     [ORDER_STATUSES.APPROVED]: { 
       label: 'Approved', 
       color: 'bg-blue-100 text-blue-800 border-blue-200',
-      icon: '✅',
       description: 'Order approved by admin, ready for packing',
       nextActions: ['pack'],
       workflow: {
@@ -119,7 +122,6 @@ function Orders() {
     [ORDER_STATUSES.PACKED]: { 
       label: 'Packed', 
       color: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-      icon: '📦',
       description: 'Order packed and ready for shipment',
       nextActions: ['ship'],
       workflow: {
@@ -131,7 +133,6 @@ function Orders() {
     [ORDER_STATUSES.SHIPPED]: { 
       label: 'Shipped', 
       color: 'bg-purple-100 text-purple-800 border-purple-200',
-      icon: '🚚',
       description: 'Order shipped to customer with tracking',
       nextActions: ['deliver'],
       workflow: {
@@ -142,7 +143,6 @@ function Orders() {
     [ORDER_STATUSES.DELIVERED]: { 
       label: 'Delivered', 
       color: 'bg-green-100 text-green-800 border-green-200',
-      icon: '✅',
       description: 'Order successfully delivered to customer',
       nextActions: [],
       workflow: {
@@ -153,7 +153,6 @@ function Orders() {
     [ORDER_STATUSES.DECLINED]: { 
       label: 'Declined', 
       color: 'bg-red-100 text-red-800 border-red-200',
-      icon: '❌',
       description: 'Order declined by admin',
       nextActions: [],
       workflow: {
@@ -164,7 +163,6 @@ function Orders() {
     [ORDER_STATUSES.CANCELLED]: { 
       label: 'Cancelled', 
       color: 'bg-gray-100 text-gray-800 border-gray-200',
-      icon: '🚫',
       description: 'Order cancelled',
       nextActions: ['refund'],
       workflow: {
@@ -175,7 +173,6 @@ function Orders() {
     [ORDER_STATUSES.REFUNDED]: { 
       label: 'Refunded', 
       color: 'bg-gray-100 text-gray-600 border-gray-200',
-      icon: '💰',
       description: 'Order refunded to customer',
       nextActions: [],
       workflow: {
@@ -193,69 +190,131 @@ function Orders() {
     [ORDER_PRIORITIES.URGENT]: {
       label: 'Urgent',
       color: 'bg-red-100 text-red-800',
-      icon: '🔥',
       description: 'Requires immediate attention'
     },
     [ORDER_PRIORITIES.HIGH]: {
       label: 'High',
       color: 'bg-orange-100 text-orange-800',
-      icon: '⚡',
       description: 'High priority processing'
     },
     [ORDER_PRIORITIES.NORMAL]: {
       label: 'Normal',
       color: 'bg-gray-100 text-gray-800',
-      icon: '📋',
       description: 'Standard processing priority'
     },
     [ORDER_PRIORITIES.LOW]: {
       label: 'Low',
       color: 'bg-blue-100 text-blue-800',
-      icon: '📌',
       description: 'Low priority, process when time allows'
     }
   }), []);
 
   /**
    * Comprehensive order fetching function
-   * Retrieves orders from the backend with error handling and loading states
+   * Uses the reliable approach from the original code with enhanced error handling
    */
   const fetchOrders = useCallback(async () => {
-    console.log('📥 Orders: Fetching orders from backend');
+    // Debounce rapid successive calls to prevent infinite loops
+    const now = Date.now();
+    if (now - lastFetchTimeRef.current < FETCH_DEBOUNCE_MS) {
+      console.log('📥 Orders: Skipping fetch due to debounce');
+      return;
+    }
+    lastFetchTimeRef.current = now;
+    
+    console.log('📥 Orders: Fetching orders from backend using direct Firestore query');
     
     try {
       setLoading(true);
       setError(null);
       
-      // Prepare filters for API call
-      const apiFilters = {
-        ...filters,
-        // Convert date strings to proper date objects if provided
-        ...(filters.dateRange.startDate && { startDate: filters.dateRange.startDate }),
-        ...(filters.dateRange.endDate && { endDate: filters.dateRange.endDate })
-      };
+      // Use the reliable direct Firestore approach from the original code
+      // Try multiple field names for ordering to handle different data structures
+      let ordersData = [];
+      let querySuccessful = false;
       
-      // Fetch orders using the enhanced admin service
-      const result = await AdminOrderService.getAllOrders(apiFilters, {
-        limit: pagination.itemsPerPage,
-        page: pagination.currentPage
-      });
-      
-      if (result.success) {
-        setOrders(result.orders);
-        setPagination(prev => ({
-          ...prev,
-          totalItems: result.totalCount
+      // Try ordering by 'orderDate' first (as in original code)
+      try {
+        console.log('📥 Orders: Attempting query with orderBy("orderDate", "desc")');
+        const ordersQuery = query(collection(db, "orders"), orderBy("orderDate", "desc"));
+        const ordersSnapshot = await getDocs(ordersQuery);
+        
+        ordersData = ordersSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
         }));
         
-        console.log(`✅ Orders: Successfully fetched ${result.orders.length} orders`);
+        querySuccessful = true;
+        console.log(`✅ Orders: Successfully fetched ${ordersData.length} orders using 'orderDate' field`);
+      } catch (orderDateError) {
+        console.warn('⚠️ Orders: Failed to order by "orderDate", trying "createdAt":', orderDateError);
+        
+        // Fallback to 'createdAt' ordering
+        try {
+          console.log('📥 Orders: Attempting query with orderBy("createdAt", "desc")');
+          const ordersQuery = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+          const ordersSnapshot = await getDocs(ordersQuery);
+          
+          ordersData = ordersSnapshot.docs.map(doc => {
+            const data = doc.data();
+            // Log sample order data to help debug field structures
+            if (ordersData.length === 0) {
+              console.log('📊 Orders: Sample order data structure:', {
+                id: doc.id,
+                total: data.total,
+                amount: data.amount,
+                financials: data.financials,
+                payment: data.payment,
+                items: data.items?.length || 0
+              });
+            }
+            return {
+              id: doc.id,
+              ...data
+            };
+          });
+          
+          querySuccessful = true;
+          console.log(`✅ Orders: Successfully fetched ${ordersData.length} orders using 'createdAt' field`);
+        } catch (createdAtError) {
+          console.warn('⚠️ Orders: Failed to order by "createdAt", trying without ordering:', createdAtError);
+          
+          // Final fallback: no ordering
+          try {
+            console.log('📥 Orders: Attempting query without ordering');
+            const ordersSnapshot = await getDocs(collection(db, "orders"));
+            
+            ordersData = ordersSnapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }));
+            
+            // Sort manually by available date field
+            ordersData.sort((a, b) => {
+              const dateA = a.orderDate || a.createdAt?.toDate?.() || a.createdAt || new Date(0);
+              const dateB = b.orderDate || b.createdAt?.toDate?.() || b.createdAt || new Date(0);
+              return new Date(dateB) - new Date(dateA);
+            });
+            
+            querySuccessful = true;
+            console.log(`✅ Orders: Successfully fetched ${ordersData.length} orders without ordering (sorted manually)`);
+          } catch (finalError) {
+            throw new Error(`Failed all query attempts: ${finalError.message}`);
+          }
+        }
+      }
+      
+      if (querySuccessful) {
+        setOrders(ordersData);
+        
+        console.log(`✅ Orders: Successfully loaded ${ordersData.length} orders`);
         
         // Show success message only on manual refresh
-        if (!loading) {
-          toast.success(`Refreshed ${result.orders.length} orders`);
+        if (ordersData.length > 0) {
+          toast.success(`Refreshed ${ordersData.length} orders`);
         }
       } else {
-        throw new Error(result.error || 'Failed to fetch orders');
+        throw new Error('Failed to fetch orders with all attempted methods');
       }
     } catch (error) {
       console.error('❌ Orders: Error fetching orders:', error);
@@ -264,7 +323,66 @@ function Orders() {
     } finally {
       setLoading(false);
     }
-  }, [filters, pagination.itemsPerPage, pagination.currentPage, loading]);
+  }, []); // Remove all dependencies to prevent infinite loops
+  
+  // Update the ref whenever fetchOrders changes
+  useEffect(() => {
+    fetchOrdersRef.current = fetchOrders;
+  }, [fetchOrders]);
+
+  /**
+   * Extract order total from various possible fields
+   * Different orders might store total in different fields
+   */
+  const getOrderTotal = useCallback((order) => {
+    // Try different possible fields where total might be stored
+    const possibleTotalFields = [
+      order.total,
+      order.amount,
+      order.grandTotal,
+      order.finalAmount,
+      order.orderTotal,
+      order.financials?.total,
+      order.payment?.amount,
+      order.summary?.total,
+      order.pricing?.total
+    ];
+
+    // Find the first non-zero, non-null, non-undefined value
+    for (const field of possibleTotalFields) {
+      if (field !== null && field !== undefined && field !== 0 && !isNaN(field)) {
+        return Number(field);
+      }
+    }
+
+    // If all fields are 0 or undefined, calculate from items if available
+    if (order.items && Array.isArray(order.items)) {
+      const calculatedTotal = order.items.reduce((sum, item) => {
+        const itemTotal = (item.price || 0) * (item.quantity || 0);
+        return sum + itemTotal;
+      }, 0);
+      
+      if (calculatedTotal > 0) {
+        console.log(`Orders: Calculated total ${calculatedTotal} from items for order ${order.id}`);
+        return calculatedTotal;
+      }
+    }
+
+    console.warn(`Orders: Could not determine total for order ${order.id}:`, {
+      total: order.total,
+      amount: order.amount,
+      financials: order.financials,
+      payment: order.payment,
+      itemsCount: order.items?.length || 0
+    });
+
+    return 0;
+  }, []);
+
+  /**
+   * Memoized orders count to avoid eslint dependency issues
+   */
+  const ordersCount = useMemo(() => orders.length, [orders.length]);
 
   /**
    * Advanced filter application function
@@ -273,7 +391,7 @@ function Orders() {
   const applyFilters = useCallback(() => {
     let filtered = [...orders];
     
-    console.log(`🔍 Orders: Applying filters to ${orders.length} orders`);
+    console.log(`🔍 Orders: Applying filters to ${ordersCount} orders`);
     
     // Status filter - filter by order status
     if (filters.status && filters.status !== 'all') {
@@ -316,7 +434,7 @@ function Orders() {
     if (filters.minAmount && !isNaN(parseFloat(filters.minAmount))) {
       const minAmount = parseFloat(filters.minAmount);
       filtered = filtered.filter(order => {
-        const orderTotal = order.financials?.total || order.total || 0;
+        const orderTotal = getOrderTotal(order);
         return orderTotal >= minAmount;
       });
       console.log(`🔍 Orders: Min amount filter (₹${minAmount}) applied, ${filtered.length} orders remaining`);
@@ -350,8 +468,8 @@ function Orders() {
     }
     
     setFilteredOrders(filtered);
-    console.log(`✅ Orders: Filters applied successfully, showing ${filtered.length} of ${orders.length} orders`);
-  }, [orders, filters]);
+    console.log(`✅ Orders: Filters applied successfully, showing ${filtered.length} of ${ordersCount} orders`);
+  }, [orders, filters, getOrderTotal, ordersCount]);
 
   /**
    * Initial data loading effect
@@ -359,17 +477,35 @@ function Orders() {
    */
   useEffect(() => {
     console.log('🔄 Orders: Component mounted, initiating data fetch');
-    fetchOrders();
+    
+    // Add error handling to prevent component crashes
+    const safeFetchOrders = async () => {
+      try {
+        await fetchOrders();
+      } catch (error) {
+        console.error('❌ Orders: Error in initial fetch:', error);
+        setError(error.message);
+        setLoading(false);
+      }
+    };
+    
+    safeFetchOrders();
     
     // Set up auto-refresh for real-time updates (every 5 minutes)
-    const refreshInterval = setInterval(fetchOrders, 5 * 60 * 1000);
+    // Use ref to access the latest fetchOrders function without causing dependency issues
+    const refreshInterval = setInterval(() => {
+      if (fetchOrdersRef.current) {
+        fetchOrdersRef.current();
+      }
+    }, 5 * 60 * 1000);
     
     // Cleanup interval on component unmount
     return () => {
       clearInterval(refreshInterval);
       console.log('🧹 Orders: Component unmounted, cleaning up resources');
     };
-  }, [fetchOrders]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array - only run on mount/unmount
 
   /**
    * Filter application effect
@@ -381,9 +517,7 @@ function Orders() {
   }, [orders, filters, applyFilters]);
 
   /**
-   * Comprehensive order status update function
-   * Updates order status with validation, history tracking, and user feedback
-   * 
+   * Update order status in Firestore (simplified approach from original code)
    * @param {string} orderId - Order ID to update
    * @param {string} newStatus - New status to set
    * @param {Object} additionalInfo - Additional information for the update
@@ -394,67 +528,64 @@ function Orders() {
     try {
       setProcessingAction(true);
       
-      // Validate status transition if current order is available
-      const currentOrder = orders.find(order => order.id === orderId);
-      if (currentOrder) {
-        console.log(`📋 Orders: Status transition: ${currentOrder.status} → ${newStatus}`);
-        
-        // Show confirmation for critical status changes
-        if ([ORDER_STATUSES.DECLINED, ORDER_STATUSES.CANCELLED].includes(newStatus)) {
-          const confirmed = window.confirm(
-            `Are you sure you want to ${newStatus.toLowerCase()} order ${currentOrder.orderId}?\n\n` +
-            `This will restore inventory and cannot be easily undone.`
-          );
-          
-          if (!confirmed) {
-            console.log('❌ Orders: Status update cancelled by user');
-            return;
-          }
-        }
+      // Get current order data
+      const orderRef = doc(db, "orders", orderId);
+      const orderSnap = await getDoc(orderRef);
+      
+      if (!orderSnap.exists()) {
+        throw new Error("Order not found");
       }
       
-      // Call the admin service to update order status
-      const result = await AdminOrderService.updateOrderStatus(
-        orderId, 
-        newStatus, 
-        {
-          note: additionalInfo.note || `Order ${newStatus.toLowerCase()} by admin`,
-          reason: additionalInfo.reason,
-          adminNotes: additionalInfo.adminNotes,
-          metadata: {
-            updatedFrom: 'admin-panel',
-            timestamp: new Date().toISOString()
-          }
-        },
-        'admin-user' // TODO: Replace with actual admin user ID
-      );
+      const orderData = orderSnap.data();
       
-      if (result.success) {
-        // Update local state with the new status
-        setOrders(prevOrders => 
-          prevOrders.map(order => 
-            order.id === orderId 
-              ? { 
-                  ...order, 
-                  status: newStatus,
-                  updatedAt: new Date(),
-                  lastUpdatedBy: 'admin-user'
-                } 
-              : order
-          )
+      // Show confirmation for critical status changes
+      if (['Declined', 'Cancelled'].includes(newStatus)) {
+        const confirmed = window.confirm(
+          `Are you sure you want to ${newStatus.toLowerCase()} order ${orderData.orderId || orderId}?\n\n` +
+          `This action cannot be easily undone.`
         );
         
-        // Close modal if open
-        if (isModalOpen && selectedOrder?.id === orderId) {
-          setSelectedOrder(prev => ({ ...prev, status: newStatus }));
+        if (!confirmed) {
+          console.log('❌ Orders: Status update cancelled by user');
+          return;
         }
-        
-        console.log(`✅ Orders: Order ${orderId} status updated to ${newStatus}`);
-        toast.success(`Order ${currentOrder?.orderId || orderId} ${newStatus.toLowerCase()} successfully`);
-        
-      } else {
-        throw new Error(result.error || 'Failed to update order status');
       }
+      
+      // Create status history entry
+      const statusUpdate = {
+        status: newStatus,
+        timestamp: new Date().toISOString(),
+        note: additionalInfo.note || `Order ${newStatus.toLowerCase()} by admin`
+      };
+      
+      // Update order with new status and history
+      await updateDoc(orderRef, {
+        status: newStatus,
+        statusHistory: [...(orderData.statusHistory || []), statusUpdate],
+      });
+      
+      // Update local state
+      setOrders(prevOrders => 
+        prevOrders.map(order => 
+          order.id === orderId 
+            ? { 
+                ...order, 
+                status: newStatus,
+                statusHistory: [...(order.statusHistory || []), statusUpdate]
+              } 
+            : order
+        )
+      );
+      
+      // Close modal if open
+      if (isModalOpen && selectedOrder?.id === orderId) {
+        setSelectedOrder(prev => ({ ...prev, status: newStatus }));
+        setIsModalOpen(false);
+      }
+      
+      console.log(`✅ Orders: Order ${orderId} status updated to ${newStatus}`);
+      toast.success(`Order ${orderData.orderId || orderId} ${newStatus.toLowerCase()} successfully`);
+      
     } catch (error) {
       console.error('❌ Orders: Error updating order status:', error);
       toast.error(`Failed to update order: ${error.message}`);
@@ -464,101 +595,70 @@ function Orders() {
   };
 
   /**
-   * Shipping information management function
-   * Adds or updates shipping information with tracking details
-   * 
+   * Add tracking information to an order (simplified approach from original code)
    * @param {Event} e - Form submit event
    */
-  const handleShippingUpdate = async (e) => {
+  const addTracking = async (e) => {
     e.preventDefault();
     
-    if (!selectedOrder) {
-      toast.error("No order selected for shipping update");
+    if (!selectedOrder || !shippingInfo.trackingNumber) {
+      toast.error("Please enter a valid tracking code");
       return;
     }
     
-    console.log(`🚚 Orders: Updating shipping info for order ${selectedOrder.id}`);
-    
-    // Validate required shipping information
-    if (!shippingInfo.trackingNumber.trim()) {
-      toast.error("Please enter a valid tracking number");
-      return;
-    }
-    
-    if (!shippingInfo.carrier) {
-      toast.error("Please select a shipping carrier");
-      return;
-    }
+    console.log(`🚚 Orders: Adding tracking info for order ${selectedOrder.id}`);
     
     try {
       setProcessingAction(true);
       
-      // Call the admin service to update shipping information
-      const result = await AdminOrderService.updateShippingInfo(
-        selectedOrder.id,
-        {
-          trackingNumber: shippingInfo.trackingNumber.trim(),
-          carrier: shippingInfo.carrier,
-          service: shippingInfo.service,
-          weight: shippingInfo.weight ? parseFloat(shippingInfo.weight) : null,
-          notes: shippingInfo.notes.trim()
-        },
-        'admin-user' // TODO: Replace with actual admin user ID
+      // Update order with tracking info
+      const orderRef = doc(db, "orders", selectedOrder.id);
+      const trackingData = {
+        code: shippingInfo.trackingNumber,
+        carrier: shippingInfo.carrier
+      };
+      
+      const statusUpdate = {
+        status: 'Shipped',
+        timestamp: new Date().toISOString(),
+        note: `Shipped with tracking code: ${shippingInfo.trackingNumber}`
+      };
+      
+      await updateDoc(orderRef, {
+        status: 'Shipped',
+        tracking: trackingData,
+        statusHistory: [
+          ...(selectedOrder.statusHistory || []),
+          statusUpdate
+        ]
+      });
+      
+      // Update local state
+      setOrders(prevOrders => 
+        prevOrders.map(order => 
+          order.id === selectedOrder.id 
+            ? { 
+                ...order, 
+                status: 'Shipped',
+                tracking: trackingData,
+                statusHistory: [
+                  ...(order.statusHistory || []),
+                  statusUpdate
+                ]
+              } 
+            : order
+        )
       );
       
-      if (result.success) {
-        // Update local order state
-        setOrders(prevOrders => 
-          prevOrders.map(order => 
-            order.id === selectedOrder.id 
-              ? { 
-                  ...order, 
-                  status: ORDER_STATUSES.SHIPPED,
-                  tracking: {
-                    code: shippingInfo.trackingNumber,
-                    carrier: shippingInfo.carrier,
-                    url: result.trackingUrl,
-                    estimatedDelivery: result.estimatedDelivery
-                  },
-                  shippedAt: new Date()
-                } 
-              : order
-          )
-        );
-        
-        // Update selected order if modal is open
-        setSelectedOrder(prev => ({
-          ...prev,
-          status: ORDER_STATUSES.SHIPPED,
-          tracking: {
-            code: shippingInfo.trackingNumber,
-            carrier: shippingInfo.carrier,
-            url: result.trackingUrl,
-            estimatedDelivery: result.estimatedDelivery
-          }
-        }));
-        
-        // Reset shipping form
-        setShippingInfo({
-          trackingNumber: '',
-          carrier: 'IndiaPost',
-          service: 'standard',
-          weight: '',
-          notes: ''
-        });
-        
-        // Close modal
-        setIsModalOpen(false);
-        setModalMode('view');
-        
-        console.log(`✅ Orders: Shipping info updated for order ${selectedOrder.id}`);
-        toast.success(`Tracking information added successfully! Tracking: ${result.trackingNumber}`);
-        
-      } else {
-        throw new Error(result.error || 'Failed to update shipping information');
-      }
+      setIsModalOpen(false);
+      setSelectedOrder(null);
+      setShippingInfo({ trackingNumber: '', carrier: 'IndiaPost', service: 'standard', weight: '', notes: '' });
+      
+      console.log(`✅ Orders: Tracking added to order ${selectedOrder.id}`);
+      toast.success(`Tracking information added to order ${selectedOrder.orderId || selectedOrder.id}`);
+      
     } catch (error) {
-      console.error('❌ Orders: Error updating shipping info:', error);
+      console.error("❌ Orders: Error adding tracking:", error);
       toast.error(`Failed to add tracking: ${error.message}`);
     } finally {
       setProcessingAction(false);
@@ -672,48 +772,31 @@ function Orders() {
   };
 
   /**
-   * Utility function to format dates in a user-friendly way
-   * Handles both Firestore timestamps and regular Date objects
-   * 
-   * @param {any} dateInput - Date input (Firestore timestamp, Date object, or string)
-   * @returns {string} - Formatted date string
+   * Format date to display in a user-friendly way (simplified from original)
    */
-  const formatDate = (dateInput) => {
+  const formatDate = (dateString) => {
     try {
-      let date;
-      
-      // Handle Firestore timestamp
-      if (dateInput && typeof dateInput.toDate === 'function') {
-        date = dateInput.toDate();
-      } 
-      // Handle Date object or date string
-      else if (dateInput) {
-        date = new Date(dateInput);
-      } else {
-        return 'Not available';
-      }
-      
-      // Check if date is valid
-      if (isNaN(date.getTime())) {
-        return 'Invalid date';
-      }
-      
-      // Format with Indian locale preferences
       const options = { 
         year: 'numeric', 
-        month: 'short', 
+        month: 'long', 
         day: 'numeric',
         hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
+        minute: '2-digit'
       };
-      
-      return date.toLocaleDateString('en-IN', options);
+      return new Date(dateString).toLocaleDateString('en-IN', options);
     } catch (error) {
-      console.warn('⚠️ Orders: Error formatting date:', error);
-      return 'Date error';
+      return 'Invalid date';
     }
   };
+
+  /**
+   * Format price as currency (from original code)
+   */
+  const formatPrice = (price) => {
+    return `₹${Number(price).toFixed(2)}`;
+  };
+
+
 
   /**
    * Enhanced order details modal opening function
@@ -821,31 +904,41 @@ function Orders() {
       
       {/* Header Section with Title and Action Buttons */}
       <div className="mb-8">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Order Management</h1>
-            <p className="text-gray-600">
-              Comprehensive order management system with advanced filtering and bulk operations
+            <h1 className="text-3xl font-bold text-gray-900 mb-3">Order Management</h1>
+            <p className="text-gray-600 text-lg mb-4">
+              Manage and track all customer orders
             </p>
-            <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-              <span>Total Orders: {formatIndianNumber(orders.length)}</span>
-              <span>Filtered: {formatIndianNumber(filteredOrders.length)}</span>
+            <div className="flex items-center gap-6 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                <span className="text-gray-600">Total Orders:</span>
+                <span className="font-semibold text-gray-900">{formatIndianNumber(orders.length)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                <span className="text-gray-600">Showing:</span>
+                <span className="font-semibold text-gray-900">{formatIndianNumber(filteredOrders.length)}</span>
+              </div>
               {selectedOrderIds.size > 0 && (
-                <span className="text-blue-600 font-medium">
-                  Selected: {selectedOrderIds.size}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
+                  <span className="text-gray-600">Selected:</span>
+                  <span className="font-semibold text-orange-600">{selectedOrderIds.size}</span>
+                </div>
               )}
             </div>
           </div>
           
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-3">
             {/* Refresh button */}
             <button
               onClick={fetchOrders}
               disabled={loading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 
-                       disabled:opacity-50 disabled:cursor-not-allowed transition-colors
-                       flex items-center gap-2"
+              className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 
+                       disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200
+                       flex items-center gap-2 font-medium shadow-sm"
             >
               {loading ? (
                 <>
@@ -854,7 +947,10 @@ function Orders() {
                 </>
               ) : (
                 <>
-                  🔄 Refresh
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Refresh
                 </>
               )}
             </button>
@@ -863,9 +959,9 @@ function Orders() {
             <button
               onClick={generateAnalytics}
               disabled={analyticsLoading}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 
-                       disabled:opacity-50 disabled:cursor-not-allowed transition-colors
-                       flex items-center gap-2"
+              className="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 
+                       disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200
+                       flex items-center gap-2 font-medium shadow-sm"
             >
               {analyticsLoading ? (
                 <>
@@ -874,7 +970,10 @@ function Orders() {
                 </>
               ) : (
                 <>
-                  📊 Analytics
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  Analytics
                 </>
               )}
             </button>
@@ -885,21 +984,24 @@ function Orders() {
                 setBulkOperationMode(!bulkOperationMode);
                 setSelectedOrderIds(new Set());
               }}
-              className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+              className={`px-5 py-2.5 rounded-lg transition-all duration-200 flex items-center gap-2 font-medium shadow-sm ${
                 bulkOperationMode 
                   ? 'bg-orange-600 text-white hover:bg-orange-700' 
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
             >
-              {bulkOperationMode ? '✅ Bulk Mode' : '📝 Bulk Mode'}
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              {bulkOperationMode ? 'Exit Bulk Mode' : 'Bulk Operations'}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Advanced Filters Section */}
-      <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-4">
+      {/* Filters Section */}
+      <div className="mb-8 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-gray-800">Filters & Search</h3>
           <button
             onClick={() => {
@@ -912,25 +1014,25 @@ function Orders() {
                 carrier: 'all'
               });
             }}
-            className="text-sm text-gray-500 hover:text-gray-700 underline"
+            className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
           >
             Clear All Filters
           </button>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           {/* Status filter */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
             <select
               value={filters.status}
               onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
             >
               <option value="all">All Statuses</option>
               {Object.entries(ORDER_STATUS_CONFIG).map(([status, config]) => (
                 <option key={status} value={status}>
-                  {config.icon} {config.label}
+                  {config.label}
                 </option>
               ))}
             </select>
@@ -938,16 +1040,16 @@ function Orders() {
           
           {/* Priority filter */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
             <select
               value={filters.priority}
               onChange={(e) => setFilters(prev => ({ ...prev, priority: e.target.value }))}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
             >
               <option value="all">All Priorities</option>
               {Object.entries(PRIORITY_CONFIG).map(([priority, config]) => (
                 <option key={priority} value={priority}>
-                  {config.icon} {config.label}
+                  {config.label}
                 </option>
               ))}
             </select>
@@ -955,19 +1057,24 @@ function Orders() {
           
           {/* Search input */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
-            <input
-              type="text"
-              placeholder="Order ID, customer, product..."
-              value={filters.searchTerm}
-              onChange={(e) => setFilters(prev => ({ ...prev, searchTerm: e.target.value }))}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Order ID, customer, product..."
+                value={filters.searchTerm}
+                onChange={(e) => setFilters(prev => ({ ...prev, searchTerm: e.target.value }))}
+                className="w-full p-3 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              />
+              <svg className="absolute left-3 top-3.5 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
           </div>
           
           {/* Start date filter */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
             <input
               type="date"
               value={filters.dateRange.startDate}
@@ -975,13 +1082,13 @@ function Orders() {
                 ...prev, 
                 dateRange: { ...prev.dateRange, startDate: e.target.value }
               }))}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
             />
           </div>
           
           {/* End date filter */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
             <input
               type="date"
               value={filters.dateRange.endDate}
@@ -989,39 +1096,49 @@ function Orders() {
                 ...prev, 
                 dateRange: { ...prev.dateRange, endDate: e.target.value }
               }))}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
             />
           </div>
           
           {/* Minimum amount filter */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Min Amount</label>
-            <input
-              type="number"
-              placeholder="₹0"
-              value={filters.minAmount}
-              onChange={(e) => setFilters(prev => ({ ...prev, minAmount: e.target.value }))}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-2">Min Amount</label>
+            <div className="relative">
+              <input
+                type="number"
+                placeholder="0"
+                value={filters.minAmount}
+                onChange={(e) => setFilters(prev => ({ ...prev, minAmount: e.target.value }))}
+                className="w-full p-3 pl-8 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              />
+              <span className="absolute left-3 top-3.5 text-gray-400">₹</span>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Bulk Operations Panel */}
       {bulkOperationMode && (
-        <div className="mb-6 bg-orange-50 rounded-lg border-2 border-orange-200 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold text-orange-800">
-              Bulk Operations Mode {selectedOrderIds.size > 0 && `(${selectedOrderIds.size} selected)`}
-            </h3>
+        <div className="mb-8 bg-orange-50 rounded-xl border border-orange-200 p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-orange-800 mb-1">
+                Bulk Operations Mode
+              </h3>
+              {selectedOrderIds.size > 0 && (
+                <p className="text-sm text-orange-700">
+                  {selectedOrderIds.size} order{selectedOrderIds.size !== 1 ? 's' : ''} selected
+                </p>
+              )}
+            </div>
             {selectedOrderIds.size > 0 && (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => handleBulkOperation('update_status', { 
                     status: ORDER_STATUSES.APPROVED,
                     note: 'Bulk approval by admin'
                   })}
-                  className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition-colors font-medium"
                   disabled={processingAction}
                 >
                   Bulk Approve
@@ -1030,38 +1147,43 @@ function Orders() {
                   onClick={() => handleBulkOperation('update_priority', { 
                     priority: ORDER_PRIORITIES.HIGH 
                   })}
-                  className="px-3 py-1 bg-yellow-600 text-white rounded text-sm hover:bg-yellow-700"
+                  className="px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm hover:bg-yellow-700 transition-colors font-medium"
                   disabled={processingAction}
                 >
                   Set High Priority
                 </button>
                 <button
                   onClick={() => setSelectedOrderIds(new Set())}
-                  className="px-3 py-1 bg-gray-600 text-white rounded text-sm hover:bg-gray-700"
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg text-sm hover:bg-gray-700 transition-colors font-medium"
                 >
                   Clear Selection
                 </button>
               </div>
             )}
           </div>
-          <p className="text-orange-700 text-sm">
-            Select orders by clicking the checkboxes to perform bulk operations. 
-            You can approve, update priority, or perform other actions on multiple orders at once.
-          </p>
+          {selectedOrderIds.size === 0 && (
+            <p className="text-orange-700 text-sm bg-orange-100 rounded-lg p-3">
+              Select orders using the checkboxes to perform bulk operations like approval, priority updates, and more.
+            </p>
+          )}
         </div>
       )}
 
       {/* Orders Table Section */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         {filteredOrders.length === 0 ? (
           // Empty state with helpful messaging
-          <div className="p-12 text-center">
-            <div className="text-6xl mb-4">📦</div>
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">No Orders Found</h3>
-            <p className="text-gray-500 mb-4">
+          <div className="p-16 text-center">
+            <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gray-100 flex items-center justify-center">
+              <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-3">No Orders Found</h3>
+            <p className="text-gray-600 mb-6 max-w-sm mx-auto">
               {orders.length === 0 
-                ? "No orders have been placed yet" 
-                : "No orders match your current filters"}
+                ? "No orders have been placed yet. Orders will appear here once customers start placing them." 
+                : "No orders match your current filters. Try adjusting your search criteria."}
             </p>
             {orders.length > 0 && (
               <button
@@ -1073,27 +1195,28 @@ function Orders() {
                   minAmount: '',
                   carrier: 'all'
                 })}
-                className="text-blue-600 hover:text-blue-800 underline"
+                className="px-4 py-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
               >
-                Clear filters to see all orders
+                Clear all filters
               </button>
             )}
           </div>
         ) : (
           <>
             {/* Table Header */}
-            <div className="bg-gray-50 border-b border-gray-200 p-4">
-              <div className={`grid gap-4 items-center font-medium text-gray-700 ${
+            <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
+              <div className={`grid gap-6 items-center font-semibold text-gray-700 text-sm uppercase tracking-wide ${
                 bulkOperationMode ? 'grid-cols-8' : 'grid-cols-7'
               }`}>
                 {bulkOperationMode && (
-                  <div>
+                  <div className="flex items-center">
                     <input
                       type="checkbox"
                       checked={selectedOrderIds.size === filteredOrders.length && filteredOrders.length > 0}
                       onChange={selectAllOrders}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
                     />
+                    <span className="ml-2 text-xs">Select All</span>
                   </div>
                 )}
                 <div>Order Details</div>
@@ -1107,7 +1230,7 @@ function Orders() {
             </div>
             
             {/* Table Body */}
-            <div className="divide-y divide-gray-200">
+            <div className="divide-y divide-gray-100">
               {filteredOrders.map((order) => {
                 const statusConfig = ORDER_STATUS_CONFIG[order.status] || ORDER_STATUS_CONFIG[ORDER_STATUSES.PLACED];
                 const priorityConfig = PRIORITY_CONFIG[order.priority] || PRIORITY_CONFIG[ORDER_PRIORITIES.NORMAL];
@@ -1116,11 +1239,11 @@ function Orders() {
                 return (
                   <div 
                     key={order.id} 
-                    className={`p-4 hover:bg-gray-50 transition-colors ${
+                    className={`px-6 py-5 hover:bg-gray-50 transition-all duration-150 ${
                       isSelected ? 'bg-blue-50 border-l-4 border-blue-500' : ''
                     }`}
                   >
-                    <div className={`grid gap-4 items-center ${
+                    <div className={`grid gap-6 items-center ${
                       bulkOperationMode ? 'grid-cols-8' : 'grid-cols-7'
                     }`}>
                       {/* Bulk selection checkbox */}
@@ -1137,53 +1260,54 @@ function Orders() {
                       
                       {/* Order Details Column */}
                       <div>
-                        <div className="font-medium text-gray-900 mb-1">
-                          {order.orderId || order.id}
+                        <div className="font-semibold text-gray-900 mb-1">
+                          #{order.orderId || order.id}
                         </div>
-                        <div className="text-sm text-gray-500">
-                          {order.items?.length || 0} items
+                        <div className="text-sm text-gray-600 mb-1">
+                          {order.items?.length || 0} item{(order.items?.length || 0) !== 1 ? 's' : ''}
                         </div>
                         {order.tracking?.code && (
-                          <div className="text-xs text-blue-600 font-mono">
-                            📦 {order.tracking.code}
+                          <div className="text-xs text-blue-600 font-mono bg-blue-50 px-2 py-1 rounded">
+                            {order.tracking.code}
                           </div>
                         )}
                       </div>
                       
                       {/* Customer Information Column */}
                       <div>
-                        <div className="font-medium text-gray-900 truncate">
+                        <div className="font-medium text-gray-900 truncate mb-1">
                           {order.userName || 'Unknown Customer'}
                         </div>
-                        <div className="text-sm text-gray-500 truncate">
+                        <div className="text-sm text-gray-600 truncate">
                           {order.userEmail}
                         </div>
                       </div>
                       
                       {/* Amount Column */}
                       <div>
-                        <div className="font-semibold text-gray-900">
-                          {formatCurrency(order.financials?.total || order.total || 0)}
+                        <div className="font-semibold text-gray-900 text-lg">
+                          {formatPrice(getOrderTotal(order))}
                         </div>
                       </div>
                       
                       {/* Status Column */}
                       <div>
-                        <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border ${statusConfig.color}`}>
-                          <span>{statusConfig.icon}</span>
+                        <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold ${statusConfig.color}`}>
                           {statusConfig.label}
                         </span>
                         {order.orderAge && order.orderAge > 7 && (
-                          <div className="text-xs text-red-500 mt-1">
-                            ⚠️ {order.orderAge} days old
+                          <div className="text-xs text-red-600 mt-2 flex items-center gap-1">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                            {order.orderAge} days old
                           </div>
                         )}
                       </div>
                       
                       {/* Priority Column */}
                       <div>
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${priorityConfig.color}`}>
-                          <span>{priorityConfig.icon}</span>
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${priorityConfig.color}`}>
                           {priorityConfig.label}
                         </span>
                       </div>
@@ -1191,19 +1315,19 @@ function Orders() {
                       {/* Date Column */}
                       <div>
                         <div className="text-sm text-gray-900">
-                          {formatDate(order.createdAt || order.orderDate)}
+                          {formatDate(order.orderDate || order.createdAt)}
                         </div>
                       </div>
                       
                       {/* Actions Column */}
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-2">
                         {/* View Details Button */}
                         <button
                           onClick={() => openOrderModal(order, 'view')}
-                          className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition-colors"
+                          className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors"
                           title="View order details"
                         >
-                          👁️ View
+                          View Details
                         </button>
                         
                         {/* Status-specific action buttons */}
@@ -1211,21 +1335,21 @@ function Orders() {
                           <>
                             <button
                               onClick={() => updateOrderStatus(order.id, ORDER_STATUSES.APPROVED)}
-                              className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition-colors"
+                              className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 transition-colors"
                               disabled={processingAction}
                               title="Approve order"
                             >
-                              ✅ Approve
+                              Approve
                             </button>
                             <button
                               onClick={() => updateOrderStatus(order.id, ORDER_STATUSES.DECLINED, {
                                 reason: 'Declined by admin from order details'
                               })}
-                              className="px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700 transition-colors"
+                              className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 transition-colors"
                               disabled={processingAction}
                               title="Decline order"
                             >
-                              ❌ Decline
+                              Decline
                             </button>
                           </>
                         )}
@@ -1233,33 +1357,33 @@ function Orders() {
                         {order.status === ORDER_STATUSES.APPROVED && (
                           <button
                             onClick={() => updateOrderStatus(order.id, ORDER_STATUSES.PACKED)}
-                            className="px-2 py-1 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700 transition-colors"
+                            className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 transition-colors"
                             disabled={processingAction}
                             title="Mark as packed"
                           >
-                            📦 Mark as Packed
+                            Mark Packed
                           </button>
                         )}
                         
                         {order.status === ORDER_STATUSES.PACKED && (
                           <button
                             onClick={() => openOrderModal(order, 'shipping')}
-                            className="px-2 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700 transition-colors"
+                            className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-medium hover:bg-purple-700 transition-colors"
                             disabled={processingAction}
                             title="Add shipping information"
                           >
-                            🚚 Ship
+                            Add Shipping
                           </button>
                         )}
                         
                         {order.status === ORDER_STATUSES.SHIPPED && (
                           <button
                             onClick={() => updateOrderStatus(order.id, ORDER_STATUSES.DELIVERED)}
-                            className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition-colors"
+                            className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 transition-colors"
                             disabled={processingAction}
                             title="Mark as delivered"
                           >
-                            ✅ Mark as Delivered
+                            Mark Delivered
                           </button>
                         )}
                       </div>
@@ -1272,13 +1396,19 @@ function Orders() {
         )}
       </div>
 
-      {/* Pagination Component (placeholder for future implementation) */}
+      {/* Results Summary */}
       {filteredOrders.length > 0 && (
-        <div className="mt-6 flex items-center justify-between">
-          <div className="text-sm text-gray-500">
-            Showing {filteredOrders.length} of {orders.length} orders
+        <div className="mt-6 px-6 py-4 bg-gray-50 rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between text-sm">
+            <div className="text-gray-600">
+              Showing <span className="font-semibold text-gray-900">{filteredOrders.length}</span> of <span className="font-semibold text-gray-900">{orders.length}</span> orders
+            </div>
+            <div className="text-gray-500">
+              {orders.length > filteredOrders.length && (
+                <span>{orders.length - filteredOrders.length} orders hidden by filters</span>
+              )}
+            </div>
           </div>
-          {/* Future pagination controls can be added here */}
         </div>
       )}
 
@@ -1288,11 +1418,11 @@ function Orders() {
           <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white rounded-t-lg">
-              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <h3 className="text-xl font-bold text-gray-900">
                 {modalMode === 'shipping' ? (
-                  <>🚚 Add Shipping Information</>
+                  'Add Shipping Information'
                 ) : (
-                  <>📋 Order Details - {selectedOrder.orderId || selectedOrder.id}</>
+                  `Order Details - #${selectedOrder.orderId || selectedOrder.id}`
                 )}
               </h3>
               <button 
@@ -1313,11 +1443,11 @@ function Orders() {
             <div className="p-6">
               {modalMode === 'shipping' ? (
                 // Shipping Information Form
-                <form onSubmit={handleShippingUpdate} className="space-y-6">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                    <h4 className="font-medium text-blue-800 mb-2">📋 Shipping Instructions</h4>
+                <form onSubmit={addTracking} className="space-y-6">
+                                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                    <h4 className="font-semibold text-blue-800 mb-2">Shipping Instructions</h4>
                     <p className="text-blue-700 text-sm">
-                      Add tracking information for order <strong>{selectedOrder.orderId}</strong>. 
+                      Add tracking information for order <strong>#{selectedOrder.orderId}</strong>. 
                       This will automatically update the order status to "Shipped" and notify the customer.
                     </p>
                   </div>
@@ -1326,7 +1456,7 @@ function Orders() {
                     {/* Carrier Selection */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        📦 Shipping Carrier *
+                        Shipping Carrier *
                       </label>
                       <select
                         value={shippingInfo.carrier}
@@ -1348,7 +1478,7 @@ function Orders() {
                     {/* Tracking Number */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        🔢 Tracking Number *
+                        Tracking Number *
                       </label>
                       <input
                         type="text"
@@ -1366,7 +1496,7 @@ function Orders() {
                     {/* Service Type */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        ⚡ Service Type
+                        Service Type
                       </label>
                       <select
                         value={shippingInfo.service}
@@ -1382,7 +1512,7 @@ function Orders() {
                     {/* Package Weight */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        ⚖️ Package Weight (kg)
+                        Package Weight (kg)
                       </label>
                       <input
                         type="number"
@@ -1401,7 +1531,7 @@ function Orders() {
                   {/* Shipping Notes */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      📝 Shipping Notes
+                      Shipping Notes
                     </label>
                     <textarea
                       value={shippingInfo.notes}
@@ -1438,22 +1568,20 @@ function Orders() {
                           Processing...
                         </>
                       ) : (
-                        <>
-                          🚚 Add Tracking & Ship
-                        </>
+                        'Add Tracking & Ship'
                       )}
                     </button>
                   </div>
                 </form>
               ) : (
-                // Order Details View (continuing in next part due to length)
+                // Order Details View 
                 <div className="space-y-6">
                   {/* Order Summary */}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Order Information Card */}
                     <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                      <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                        📋 Order Information
+                      <h4 className="font-semibold text-gray-800 mb-3">
+                        Order Information
                       </h4>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
@@ -1462,7 +1590,7 @@ function Orders() {
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600">Date:</span>
-                          <span>{formatDate(selectedOrder.createdAt || selectedOrder.orderDate)}</span>
+                          <span>{formatDate(selectedOrder.orderDate || selectedOrder.createdAt)}</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-gray-600">Status:</span>
@@ -1483,7 +1611,7 @@ function Orders() {
                         <div className="flex justify-between">
                           <span className="text-gray-600">Total:</span>
                           <span className="font-bold text-lg">
-                            {formatCurrency(selectedOrder.financials?.total || selectedOrder.total || 0)}
+                            {formatPrice(getOrderTotal(selectedOrder))}
                           </span>
                         </div>
                       </div>
@@ -1491,8 +1619,8 @@ function Orders() {
                     
                     {/* Customer Information Card */}
                     <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                      <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                        👤 Customer Information
+                      <h4 className="font-semibold text-gray-800 mb-3">
+                        Customer Information
                       </h4>
                       <div className="space-y-2 text-sm">
                         <div>
@@ -1533,8 +1661,8 @@ function Orders() {
                     
                     {/* Shipping & Tracking Card */}
                     <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                      <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                        🚚 Shipping & Tracking
+                      <h4 className="font-semibold text-gray-800 mb-3">
+                        Shipping & Tracking
                       </h4>
                       {selectedOrder.tracking?.code ? (
                         <div className="space-y-2 text-sm">
@@ -1577,8 +1705,8 @@ function Orders() {
                   
                   {/* Order Items */}
                   <div>
-                    <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                      📦 Order Items ({selectedOrder.items?.length || 0})
+                    <h4 className="font-semibold text-gray-800 mb-3">
+                      Order Items ({selectedOrder.items?.length || 0})
                     </h4>
                     <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
                       <div className="grid grid-cols-5 gap-4 p-3 bg-gray-100 text-sm font-medium text-gray-700 border-b border-gray-200">
@@ -1620,8 +1748,8 @@ function Orders() {
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* Payment Information */}
                     <div>
-                      <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                        💳 Payment Information
+                      <h4 className="font-semibold text-gray-800 mb-3">
+                        Payment Information
                       </h4>
                       <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 space-y-2 text-sm">
                         <div className="flex justify-between">
@@ -1668,7 +1796,7 @@ function Orders() {
                         <div className="flex justify-between">
                           <span className="text-gray-600 font-medium">Total:</span>
                           <span className="text-gray-900 font-bold text-lg">
-                            {formatCurrency(selectedOrder.total)}
+                            {formatPrice(getOrderTotal(selectedOrder))}
                           </span>
                         </div>
                       </div>
@@ -1676,8 +1804,8 @@ function Orders() {
                     
                     {/* Order Totals */}
                     <div>
-                      <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                        💰 Order Totals
+                      <h4 className="font-semibold text-gray-800 mb-3">
+                        Order Totals
                       </h4>
                       <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 space-y-2 text-sm">
                         <div className="flex justify-between">
@@ -1705,7 +1833,7 @@ function Orders() {
                         <div className="border-t border-gray-300 pt-2 mt-2">
                           <div className="flex justify-between text-base font-bold">
                             <span>Total:</span>
-                            <span>{formatCurrency(selectedOrder.financials?.total || selectedOrder.total || 0)}</span>
+                            <span>{formatPrice(getOrderTotal(selectedOrder))}</span>
                           </div>
                         </div>
                       </div>
@@ -1714,8 +1842,8 @@ function Orders() {
                   
                   {/* Status History */}
                   <div>
-                    <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                      📜 Status History
+                    <h4 className="font-semibold text-gray-800 mb-3">
+                      Status History
                     </h4>
                     <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 max-h-64 overflow-y-auto">
                       {selectedOrder.statusHistory && selectedOrder.statusHistory.length > 0 ? (
@@ -1727,9 +1855,9 @@ function Orders() {
                               }`}></div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex justify-between items-start mb-1">
-                                  <div className="font-medium text-sm text-gray-900 flex items-center gap-1">
-                                    {ORDER_STATUS_CONFIG[history.status]?.icon} {history.status}
-                                  </div>
+                                                                  <div className="font-medium text-sm text-gray-900">
+                                  {history.status}
+                                </div>
                                   <div className="text-xs text-gray-500 flex-shrink-0 ml-2">
                                     {formatDate(history.timestamp)}
                                   </div>
@@ -1779,14 +1907,14 @@ function Orders() {
                             className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
                             disabled={processingAction}
                           >
-                            ✅ Approve Order
+                            Approve Order
                           </button>
                           <button
                             onClick={() => updateOrderStatus(selectedOrder.id, ORDER_STATUSES.DECLINED)}
                             className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
                             disabled={processingAction}
                           >
-                            ❌ Decline Order
+                            Decline Order
                           </button>
                         </>
                       )}
@@ -1797,7 +1925,7 @@ function Orders() {
                           className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
                           disabled={processingAction}
                         >
-                          📦 Mark as Packed
+                          Mark as Packed
                         </button>
                       )}
                       
@@ -1807,7 +1935,7 @@ function Orders() {
                           className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
                           disabled={processingAction}
                         >
-                          🚚 Add Shipping
+                          Add Shipping
                         </button>
                       )}
                       
@@ -1817,7 +1945,7 @@ function Orders() {
                           className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
                           disabled={processingAction}
                         >
-                          ✅ Mark as Delivered
+                          Mark as Delivered
                         </button>
                       )}
                     </div>
@@ -1833,7 +1961,7 @@ function Orders() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
-              <h3 className="text-xl font-bold text-gray-900">📊 Order Analytics</h3>
+              <h3 className="text-xl font-bold text-gray-900">Order Analytics</h3>
               <button 
                 onClick={() => setShowAnalytics(false)}
                 className="text-gray-400 hover:text-gray-500"

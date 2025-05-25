@@ -101,6 +101,74 @@ export const SHIPPING_CARRIERS = {
 class AdminOrderService {
   
   /**
+   * Simple test method to check Firestore connection and data structure
+   * @returns {Promise<Object>} - Test results
+   */
+  static async testFirestoreConnection() {
+    console.log('🧪 AdminOrderService: Testing Firestore connection...');
+    
+    try {
+      // Try to get just one document from the orders collection
+      const ordersRef = collection(db, "orders");
+      const snapshot = await getDocs(query(ordersRef, limit(1)));
+      
+      console.log('🧪 AdminOrderService: Connection test results:', {
+        connected: true,
+        documentsFound: snapshot.docs.length,
+        sampleData: snapshot.docs.length > 0 ? snapshot.docs[0].data() : null
+      });
+      
+      return {
+        success: true,
+        connected: true,
+        documentsFound: snapshot.docs.length,
+        sampleData: snapshot.docs.length > 0 ? snapshot.docs[0].data() : null
+      };
+    } catch (error) {
+      console.error('🧪 AdminOrderService: Connection test failed:', error);
+      return {
+        success: false,
+        connected: false,
+        error: error.message
+      };
+    }
+  }
+  
+  /**
+   * Simple method to get all orders without any filters or complex logic
+   * @returns {Promise<Object>} - Simple order retrieval
+   */
+  static async getSimpleOrders() {
+    console.log('🧪 AdminOrderService: Getting orders with simple query...');
+    
+    try {
+      const ordersRef = collection(db, "orders");
+      const snapshot = await getDocs(ordersRef);
+      
+      const orders = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      console.log(`🧪 AdminOrderService: Simple query returned ${orders.length} orders`);
+      
+      return {
+        success: true,
+        orders: orders,
+        totalCount: orders.length
+      };
+    } catch (error) {
+      console.error('🧪 AdminOrderService: Simple query failed:', error);
+      return {
+        success: false,
+        error: error.message,
+        orders: [],
+        totalCount: 0
+      };
+    }
+  }
+  
+  /**
    * Fetch all orders with advanced filtering and pagination
    * This method provides flexible order retrieval with multiple filter options
    * for efficient admin order management and analysis
@@ -114,6 +182,7 @@ class AdminOrderService {
     
     try {
       let ordersQuery = collection(db, "orders");
+      console.log('🔍 AdminOrderService: Initial query created for collection "orders"');
       
       // Apply status filter for order workflow management
       if (filters.status && filters.status !== 'all') {
@@ -155,7 +224,15 @@ class AdminOrderService {
       // Apply ordering for consistent data presentation
       const orderField = filters.orderBy || "createdAt";
       const orderDirection = filters.orderDirection || "desc";
-      ordersQuery = query(ordersQuery, orderBy(orderField, orderDirection));
+      
+      // Try to apply ordering, but catch errors in case the field doesn't exist
+      try {
+        ordersQuery = query(ordersQuery, orderBy(orderField, orderDirection));
+        console.log(`🔍 AdminOrderService: Applied ordering by ${orderField} ${orderDirection}`);
+      } catch (orderError) {
+        console.warn(`⚠️ AdminOrderService: Could not order by ${orderField}, using no ordering:`, orderError);
+        // Continue with query without ordering
+      }
       
       // Apply pagination for performance optimization
       if (pagination.limit) {
@@ -168,20 +245,40 @@ class AdminOrderService {
       }
       
       // Execute the query and transform results
+      console.log('🔍 AdminOrderService: Executing Firestore query...');
       const ordersSnapshot = await getDocs(ordersQuery);
+      console.log(`🔍 AdminOrderService: Raw query returned ${ordersSnapshot.docs.length} documents`);
+      
+      if (ordersSnapshot.docs.length > 0) {
+        console.log('🔍 AdminOrderService: Sample document data:', ordersSnapshot.docs[0].data());
+      }
       
       const orders = ordersSnapshot.docs.map(doc => {
         const data = doc.data();
+        console.log(`🔍 AdminOrderService: Processing document ${doc.id}:`, data);
+        
+        // Handle different date field formats
+        let orderDate = null;
+        if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+          orderDate = data.createdAt.toDate();
+        } else if (data.createdAt) {
+          orderDate = new Date(data.createdAt);
+        } else if (data.orderDate) {
+          orderDate = new Date(data.orderDate);
+        } else if (data.timestamp) {
+          orderDate = new Date(data.timestamp);
+        }
+        
         return {
           id: doc.id,
           ...data,
           // Ensure consistent data structure for admin interface
-          total: data.financials?.total || data.total || 0,
+          total: data.financials?.total || data.total || data.amount || 0,
           subtotal: data.financials?.subtotal || data.subtotal || 0,
-          orderDate: data.createdAt || data.orderDate,
+          orderDate: orderDate,
           // Calculate order age for processing prioritization
-          orderAge: data.createdAt ? 
-            Math.floor((new Date() - data.createdAt.toDate()) / (1000 * 60 * 60 * 24)) : 0
+          orderAge: orderDate ? 
+            Math.floor((new Date() - orderDate) / (1000 * 60 * 60 * 24)) : 0
         };
       });
       
