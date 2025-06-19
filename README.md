@@ -1,6 +1,18 @@
-# Getting Started with Create React App
+# Shop Admin Panel
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Admin panel for managing the Kamikoto shop.
+
+## Environment Setup
+
+This application requires Firebase configuration. Follow these steps to set up your environment:
+
+1. Create a `.env` file in the root directory of the project
+2. Copy the contents from `.env.example` to your `.env` file
+3. Replace the placeholder values with your actual Firebase project credentials
+
+**IMPORTANT: Never commit your `.env` file with real credentials to version control!**
+
+The application will not function properly without these environment variables set correctly.
 
 ## Available Scripts
 
