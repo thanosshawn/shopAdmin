@@ -567,14 +567,12 @@ const AdminDashboard = () => {
  * - Main content area for displaying child routes
  */
 const AdminHome = () => {
-  const [setIsLoggedIn] = useState(true); 
   const location = useLocation();
 
   /**
    * Handle admin logout
    */
   const handleLogout = () => {
-    setIsLoggedIn(false); 
     toast.success("Logged out successfully!");
     window.location.href = "/login"; 
   };

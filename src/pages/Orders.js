@@ -51,7 +51,7 @@ function Orders() {
   const lastFetchTimeRef = useRef(0);
   const FETCH_DEBOUNCE_MS = 1000; // Minimum time between fetches
   
-  // Filter and search state management
+  // Filter and search state management - Initialize with proper default values
   const [filters, setFilters] = useState({
     status: 'all',                    // Status filter for order workflow
     priority: 'all',                  // Priority filter for urgent orders
@@ -64,17 +64,17 @@ function Orders() {
     carrier: 'all'                    // Shipping carrier filter
   });
   
-  // Modal and UI state management
+  // Modal and UI state management - Initialize with proper default values
   const [selectedOrder, setSelectedOrder] = useState(null);   // Currently selected order for detailed view
   const [isModalOpen, setIsModalOpen] = useState(false);     // Modal visibility state
   const [modalMode, setModalMode] = useState('view');        // Modal mode: 'view', 'edit', 'shipping'
   const [processingAction, setProcessingAction] = useState(false); // Action processing state
   
-  // Bulk operations state management
-  const [selectedOrderIds, setSelectedOrderIds] = useState(new Set()); // Selected orders for bulk operations
+  // Bulk operations state management - Initialize with proper Set object
+  const [selectedOrderIds, setSelectedOrderIds] = useState(() => new Set()); // Selected orders for bulk operations
   const [bulkOperationMode, setBulkOperationMode] = useState(false);   // Bulk operation mode toggle
   
-  // Shipping management state (simplified like original code)
+  // Shipping management state - Initialize with proper default values
   const [shippingInfo, setShippingInfo] = useState({
     trackingNumber: '',               // Tracking number for shipment
     carrier: 'IndiaPost',            // Selected shipping carrier
@@ -83,7 +83,7 @@ function Orders() {
     notes: ''                        // Additional shipping notes
   });
   
-  // Analytics and reporting state
+  // Analytics and reporting state - Initialize with proper default values
   const [showAnalytics, setShowAnalytics] = useState(false);  // Analytics view toggle
   const [analyticsData, setAnalyticsData] = useState(null);   // Analytics data cache
   const [analyticsLoading, setAnalyticsLoading] = useState(false); // Analytics loading state
@@ -311,7 +311,10 @@ function Orders() {
         
         // Show success message only on manual refresh
         if (ordersData.length > 0) {
-          toast.success(`Refreshed ${ordersData.length} orders`);
+          // Safely call toast only if it's available
+          if (typeof toast === 'object' && toast !== null && typeof toast.success === 'function') {
+            toast.success(`Refreshed ${ordersData.length} orders`);
+          }
         }
       } else {
         throw new Error('Failed to fetch orders with all attempted methods');
@@ -319,7 +322,10 @@ function Orders() {
     } catch (error) {
       console.error('❌ Orders: Error fetching orders:', error);
       setError(error.message);
-      toast.error(`Failed to load orders: ${error.message}`);
+      // Safely call toast only if it's available
+      if (typeof toast === 'object' && toast !== null && typeof toast.error === 'function') {
+        toast.error(`Failed to load orders: ${error.message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -380,18 +386,13 @@ function Orders() {
   }, []);
 
   /**
-   * Memoized orders count to avoid eslint dependency issues
-   */
-  const ordersCount = useMemo(() => orders.length, [orders.length]);
-
-  /**
    * Advanced filter application function
    * Applies all active filters to the orders list with comprehensive search logic
    */
   const applyFilters = useCallback(() => {
     let filtered = [...orders];
     
-    console.log(`🔍 Orders: Applying filters to ${ordersCount} orders`);
+    console.log(`🔍 Orders: Applying filters to ${orders.length} orders`);
     
     // Status filter - filter by order status
     if (filters.status && filters.status !== 'all') {
@@ -434,7 +435,8 @@ function Orders() {
     if (filters.minAmount && !isNaN(parseFloat(filters.minAmount))) {
       const minAmount = parseFloat(filters.minAmount);
       filtered = filtered.filter(order => {
-        const orderTotal = getOrderTotal(order);
+        // Inline order total calculation to avoid circular dependency
+        const orderTotal = order.total || order.amount || order.grandTotal || order.finalAmount || 0;
         return orderTotal >= minAmount;
       });
       console.log(`🔍 Orders: Min amount filter (₹${minAmount}) applied, ${filtered.length} orders remaining`);
@@ -468,8 +470,8 @@ function Orders() {
     }
     
     setFilteredOrders(filtered);
-    console.log(`✅ Orders: Filters applied successfully, showing ${filtered.length} of ${ordersCount} orders`);
-  }, [orders, filters, getOrderTotal, ordersCount]);
+    console.log(`✅ Orders: Filters applied successfully, showing ${filtered.length} of ${orders.length} orders`);
+  }, [orders, filters]); // Simplified dependencies to prevent circular references
 
   /**
    * Initial data loading effect
@@ -514,7 +516,7 @@ function Orders() {
   useEffect(() => {
     console.log('🔍 Orders: Applying filters to orders list');
     applyFilters();
-  }, [orders, filters, applyFilters]);
+  }, [orders, filters, applyFilters]); // Added applyFilters back to dependency array
 
   /**
    * Update order status in Firestore (simplified approach from original code)
@@ -584,11 +586,17 @@ function Orders() {
       }
       
       console.log(`✅ Orders: Order ${orderId} status updated to ${newStatus}`);
-      toast.success(`Order ${orderData.orderId || orderId} ${newStatus.toLowerCase()} successfully`);
+      // Safely call toast only if it's available
+      if (typeof toast === 'object' && toast !== null && typeof toast.success === 'function') {
+        toast.success(`Order ${orderData.orderId || orderId} ${newStatus.toLowerCase()} successfully`);
+      }
       
     } catch (error) {
       console.error('❌ Orders: Error updating order status:', error);
-      toast.error(`Failed to update order: ${error.message}`);
+      // Safely call toast only if it's available
+      if (typeof toast === 'object' && toast !== null && typeof toast.error === 'function') {
+        toast.error(`Failed to update order: ${error.message}`);
+      }
     } finally {
       setProcessingAction(false);
     }
@@ -602,7 +610,10 @@ function Orders() {
     e.preventDefault();
     
     if (!selectedOrder || !shippingInfo.trackingNumber) {
-      toast.error("Please enter a valid tracking code");
+      // Safely call toast only if it's available
+      if (typeof toast === 'object' && toast !== null && typeof toast.error === 'function') {
+        toast.error("Please enter a valid tracking code");
+      }
       return;
     }
     
@@ -655,11 +666,17 @@ function Orders() {
       setShippingInfo({ trackingNumber: '', carrier: 'IndiaPost', service: 'standard', weight: '', notes: '' });
       
       console.log(`✅ Orders: Tracking added to order ${selectedOrder.id}`);
-      toast.success(`Tracking information added to order ${selectedOrder.orderId || selectedOrder.id}`);
+      // Safely call toast only if it's available
+      if (typeof toast === 'object' && toast !== null && typeof toast.success === 'function') {
+        toast.success(`Tracking information added to order ${selectedOrder.orderId || selectedOrder.id}`);
+      }
       
     } catch (error) {
       console.error("❌ Orders: Error adding tracking:", error);
-      toast.error(`Failed to add tracking: ${error.message}`);
+      // Safely call toast only if it's available
+      if (typeof toast === 'object' && toast !== null && typeof toast.error === 'function') {
+        toast.error(`Failed to add tracking: ${error.message}`);
+      }
     } finally {
       setProcessingAction(false);
     }
@@ -674,7 +691,10 @@ function Orders() {
    */
   const handleBulkOperation = async (operation, operationData) => {
     if (selectedOrderIds.size === 0) {
-      toast.error("Please select orders for bulk operation");
+      // Safely call toast only if it's available
+      if (typeof toast === 'object' && toast !== null && typeof toast.error === 'function') {
+        toast.error("Please select orders for bulk operation");
+      }
       return;
     }
     
@@ -714,9 +734,12 @@ function Orders() {
         setBulkOperationMode(false);
         
         console.log(`✅ Orders: Bulk operation completed. Success: ${result.successCount}, Failed: ${result.failureCount}`);
-        toast.success(
-          `Bulk operation completed! ${result.successCount} successful, ${result.failureCount} failed`
-        );
+        // Safely call toast only if it's available
+        if (typeof toast === 'object' && toast !== null && typeof toast.success === 'function') {
+          toast.success(
+            `Bulk operation completed! ${result.successCount} successful, ${result.failureCount} failed`
+          );
+        }
         
         // Show detailed results if there were failures
         if (result.failureCount > 0) {
@@ -729,7 +752,10 @@ function Orders() {
       }
     } catch (error) {
       console.error('❌ Orders: Error in bulk operation:', error);
-      toast.error(`Bulk operation failed: ${error.message}`);
+      // Safely call toast only if it's available
+      if (typeof toast === 'object' && toast !== null && typeof toast.error === 'function') {
+        toast.error(`Bulk operation failed: ${error.message}`);
+      }
     } finally {
       setProcessingAction(false);
     }
@@ -759,13 +785,19 @@ function Orders() {
         setShowAnalytics(true);
         
         console.log('✅ Orders: Analytics generated successfully');
-        toast.success('Analytics generated successfully');
+        // Safely call toast only if it's available
+        if (typeof toast === 'object' && toast !== null && typeof toast.success === 'function') {
+          toast.success('Analytics generated successfully');
+        }
       } else {
         throw new Error(result.error || 'Failed to generate analytics');
       }
     } catch (error) {
       console.error('❌ Orders: Error generating analytics:', error);
-      toast.error(`Failed to generate analytics: ${error.message}`);
+      // Safely call toast only if it's available
+      if (typeof toast === 'object' && toast !== null && typeof toast.error === 'function') {
+        toast.error(`Failed to generate analytics: ${error.message}`);
+      }
     } finally {
       setAnalyticsLoading(false);
     }
@@ -825,38 +857,74 @@ function Orders() {
   };
 
   /**
-   * Order selection management for bulk operations
+   * Order selection management for bulk operations with proper error handling
    * Handles individual order selection and bulk selection
    * 
    * @param {string} orderId - Order ID to toggle selection
    * @param {boolean} isSelected - Current selection state
    */
-  const toggleOrderSelection = (orderId, isSelected) => {
-    setSelectedOrderIds(prev => {
-      const newSet = new Set(prev);
-      if (isSelected) {
-        newSet.delete(orderId);
-      } else {
-        newSet.add(orderId);
+  const toggleOrderSelection = useCallback((orderId, isSelected) => {
+    try {
+      // Validate inputs to prevent errors
+      if (!orderId || typeof orderId !== 'string') {
+        console.error('toggleOrderSelection: Invalid orderId provided:', orderId);
+        return;
       }
-      return newSet;
-    });
-  };
+
+      setSelectedOrderIds(prev => {
+        // Ensure prev is a Set object, create new one if not
+        const currentSet = prev instanceof Set ? prev : new Set();
+        const newSet = new Set(currentSet);
+        
+        if (isSelected) {
+          newSet.delete(orderId);
+        } else {
+          newSet.add(orderId);
+        }
+        
+        return newSet;
+      });
+    } catch (error) {
+      console.error('Error in toggleOrderSelection:', error);
+      // Reset selectedOrderIds to prevent further errors
+      setSelectedOrderIds(new Set());
+    }
+  }, []);
 
   /**
-   * Select all visible orders for bulk operations
+   * Select all visible orders for bulk operations with proper error handling
    * Toggles selection for all currently filtered orders
    */
-  const selectAllOrders = () => {
-    if (selectedOrderIds.size === filteredOrders.length) {
-      // Deselect all
+  const selectAllOrders = useCallback(() => {
+    try {
+      // Ensure filteredOrders is an array and selectedOrderIds is a Set
+      if (!Array.isArray(filteredOrders)) {
+        console.error('selectAllOrders: filteredOrders is not an array:', filteredOrders);
+        return;
+      }
+
+      if (!(selectedOrderIds instanceof Set)) {
+        console.error('selectAllOrders: selectedOrderIds is not a Set:', selectedOrderIds);
+        setSelectedOrderIds(new Set());
+        return;
+      }
+
+      if (selectedOrderIds.size === filteredOrders.length) {
+        // Deselect all
+        setSelectedOrderIds(new Set());
+      } else {
+        // Select all visible orders
+        const allOrderIds = filteredOrders
+          .filter(order => order && order.id) // Ensure order exists and has id
+          .map(order => order.id);
+        setSelectedOrderIds(new Set(allOrderIds));
+      }
+    } catch (error) {
+      console.error('Error in selectAllOrders:', error);
+      // Reset selectedOrderIds to prevent further errors
       setSelectedOrderIds(new Set());
-    } else {
-      // Select all visible orders
-      const allOrderIds = filteredOrders.map(order => order.id);
-      setSelectedOrderIds(new Set(allOrderIds));
     }
-  };
+  }, [filteredOrders, selectedOrderIds]);
 
   // Early return for loading state with enhanced loading UI
   if (loading && orders.length === 0) {
@@ -1232,9 +1300,15 @@ function Orders() {
             {/* Table Body */}
             <div className="divide-y divide-gray-100">
               {filteredOrders.map((order) => {
+                // Ensure order object exists and has required properties
+                if (!order || !order.id) {
+                  console.warn('Orders: Skipping invalid order:', order);
+                  return null;
+                }
+
                 const statusConfig = ORDER_STATUS_CONFIG[order.status] || ORDER_STATUS_CONFIG[ORDER_STATUSES.PLACED];
                 const priorityConfig = PRIORITY_CONFIG[order.priority] || PRIORITY_CONFIG[ORDER_PRIORITIES.NORMAL];
-                const isSelected = selectedOrderIds.has(order.id);
+                const isSelected = selectedOrderIds instanceof Set ? selectedOrderIds.has(order.id) : false;
                 
                 return (
                   <div 
