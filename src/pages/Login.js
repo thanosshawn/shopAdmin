@@ -15,10 +15,7 @@ const Login = () => {
   const navigate = useNavigate();
 
   const handleLogin = async () => {
-    if (!captchaVerified) {
-      toast.error("Please verify the CAPTCHA.");
-      return;
-    }
+    
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -44,14 +41,11 @@ const Login = () => {
       setErrorMessage("Invalid email or password.");
       toast.error("Invalid email or password.");
       
-      setCaptchaVerified(false);
-      recaptchaRef.current.reset(); 
+      
     }
   };
 
-  const handleCaptchaVerification = (value) => {
-    setCaptchaVerified(!!value);
-  };
+ 
 
   return (
     <div className="flex items-center justify-center h-screen bg-gray-100">
@@ -78,7 +72,7 @@ const Login = () => {
           onClick={handleLogin}
           
         >
-          Login 
+          Login ok
         </button>
       </div>
     </div>
