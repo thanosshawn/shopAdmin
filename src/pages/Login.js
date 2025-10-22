@@ -78,7 +78,7 @@ const Login = () => {
           onClick={handleLogin}
           
         >
-          Login kar
+          Login 
         </button>
       </div>
     </div>
