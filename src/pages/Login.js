@@ -83,7 +83,7 @@ const Login = () => {
           onClick={handleLogin}
           disabled={!captchaVerified}
         >
-          Login
+          Login kar
         </button>
       </div>
     </div>
