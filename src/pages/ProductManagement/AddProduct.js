@@ -10,14 +10,7 @@ import { useNavigate } from "react-router-dom";
 const productTypes = [
   'Notebooks and Journals',
   'Pens and Pencils',
-  'Paper and Notepads',
-  'Planners and Calendars',
-  'Office Supplies',
-  'Art Supplies',
-  'Desk Accessories',
-  'Cards and Envelopes',
-  'Writing Accessories',
-  'Gift Wrap and Packaging',
+'Devotional Items',
 ];
 
 /**
@@ -26,21 +19,9 @@ const productTypes = [
  */
 const brands = [
   'Camel',
-  'Faber-Castell',
-  'Staedtler',
-  'Doms',
-  'Camlin',
-  'Luxor',
-  'Monami',
-  'Schneider',
-  'Pentel',
-  'Pilot',
-  'Kokuyo',
-  'Nataraj',
-  'OHPen',
-  'Bic',
-  'Zebra',
-  'Stabilo',
+  'Dvotional',
+  'Satvik',
+  
 ];
 
 /**
